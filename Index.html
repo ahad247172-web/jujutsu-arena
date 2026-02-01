@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Jujutsu Arena Mobile - Online Fighter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Orbitron:wght@400;700;900&display=swap');
+        
+        * {
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Orbitron', sans-serif;
+            touch-action: none;
+        }
+        
+        .anime-font {
+            font-family: 'Bangers', cursive;
+            letter-spacing: 2px;
+        }
+        
+        /* Mobile-optimized screens */
+        .screen {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .screen.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        
+        /* Touch Controls */
+        .touch-controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            height: 200px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        .control-zone {
+            position: absolute;
+            pointer-events: auto;
+        }
+        
+        /* D-Pad */
+        .dpad {
+            left: 20px;
+            bottom: 20px;
+            width: 160px;
+            height: 160px;
+        }
+        
+        .dpad-btn {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            transition: all 0.1s;
+        }
+        
+        .dpad-btn:active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.95);
+        }
+        
+        .dpad-up { top: 0; left: 55px; }
+        .dpad-down { bottom: 0; left: 55px; }
+        .dpad-left { top: 55px; left: 0; }
+        .dpad-right { top: 55px; right: 0; }
+        
+        /* Action Buttons */
+        .action-buttons {
+            right: 20px;
+            bottom: 20px;
+            width: 220px;
+            height: 180px;
+        }
+        
+        .action-btn {
+            position: absolute;
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: white;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5), inset 0 2px 10px rgba(255,255,255,0.2);
+            transition: all 0.1s;
+        }
+        
+        .action-btn:active {
+            transform: scale(0.9);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 5px rgba(255,255,255,0.3);
+        }
+        
+        .btn-punch {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            right: 80px;
+            bottom: 80px;
+        }
+        
+        .btn-kick {
+            background: linear-gradient(135deg, #4444ff, #0000cc);
+            right: 0;
+            bottom: 40px;
+        }
+        
+        .btn-special {
+            background: linear-gradient(135deg, #ffdd00, #ff8800);
+            right: 40px;
+            bottom: 120px;
+            width: 75px;
+            height: 75px;
+            font-size: 12px;
+            border-color: #ffd700;
+        }
+        
+        .btn-block {
+            background: linear-gradient(135deg, #888, #444);
+            right: 140px;
+            bottom: 0;
+            width: 55px;
+            height: 55px;
+        }
+        
+        /* Connection Status */
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-online { background: rgba(0, 255, 0, 0.3); color: #0f0; border: 1px solid #0f0; }
+        .status-offline { background: rgba(255, 0, 0, 0.3); color: #f00; border: 1px solid #f00; }
+        .status-connecting { background: rgba(255, 165, 0, 0.3); color: #ffa500; border: 1px solid #ffa500; }
+        .status-matched { background: rgba(0, 191, 255, 0.3); color: #00bfff; border: 1px solid #00bfff; }
+        
+        /* Matchmaking UI */
+        .matchmaking-card {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.9), rgba(75, 0, 130, 0.9));
+            border: 2px solid #ffd700;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 10px 40px rgba(138, 43, 226, 0.5);
+        }
+        
+        .opponent-found {
+            animation: opponentPulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes opponentPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(0, 255, 0, 0.5); }
+            50% { transform: scale(1.02); box-shadow: 0 0 40px rgba(0, 255, 0, 0.8); }
+        }
+        
+        /* Latency indicator */
+        .ping-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #0f0;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 10px;
+            z-index: 200;
+        }
+        
+        /* Game UI */
+        .health-bar-container {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+        
+        .health-fill {
+            transition: width 0.1s linear;
+            box-shadow: 0 0 10px currentColor;
+        }
+        
+        .special-bar {
+            background: linear-gradient(90deg, #ffd700, #ffed4e);
+            box-shadow: 0 0 10px #ffd700;
+        }
+        
+        /* Mobile-optimized character select */
+        .char-grid-mobile {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 10px;
+        }
+        
+        .char-card-mobile {
+            aspect-ratio: 1;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            background: rgba(0,0,0,0.5);
+        }
+        
+        .char-card-mobile.selected {
+            border-color: #ffd700;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        
+        .char-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        /* Virtual joystick for movement */
+        .joystick-zone {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            width: 150px;
+            height: 150px;
+            pointer-events: auto;
+        }
+        
+        .joystick-base {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            top: 15px;
+            left: 15px;
+        }
+        
+        .joystick-stick {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            top: 50px;
+            left: 50px;
+            transition: transform 0.05s;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-height: 700px) {
+            .touch-controls { height: 160px; }
+            .dpad { width: 140px; height: 140px; }
+            .dpad-btn { width: 42px; height: 42px; font-size: 20px; }
+            .action-btn { width: 55px; height: 55px; font-size: 12px; }
+            .btn-special { width: 65px; height: 65px; }
+        }
+        
+        @media (min-height: 900px) {
+            .touch-controls { height: 240px; }
+            .dpad { width: 180px; height: 180px; }
+            .dpad-btn { width: 55px; height: 55px; font-size: 28px; }
+        }
+        
+        /* Loading spinner */
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #ffd700;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Combo text */
+        .combo-text {
+            animation: comboPop 0.5s ease-out;
+            text-shadow: 0 0 20px currentColor;
+            font-family: 'Bangers', cursive;
+        }
+        
+        @keyframes comboPop {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        /* Tutorial overlay */
+        .tutorial-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .tutorial-step {
+            text-align: center;
+            color: white;
+            max-width: 400px;
+        }
+        
+        .highlight-area {
+            position: absolute;
+            border: 3px dashed #ffd700;
+            border-radius: 10px;
+            animation: highlightPulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes highlightPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container" class="relative w-full h-screen bg-black">
+        
+        <!-- Connection Status -->
+        <div id="connection-status" class="connection-status status-offline">
+            OFFLINE
+        </div>
+        
+        <!-- Ping Indicator -->
+        <div id="ping-display" class="ping-indicator" style="display: none;">
+            Ping: --ms
+        </div>
+
+        <!-- START SCREEN -->
+        <div id="start-screen" class="screen active bg-gradient-to-b from-purple-900 via-black to-black flex flex-col items-center justify-center p-6">
+            <div class="absolute inset-0 opacity-30" style="background-image: radial-gradient(circle at 50% 50%, #4c1d95 0%, transparent 70%);"></div>
+            
+            <h1 class="anime-font text-5xl md:text-7xl text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 mb-2 text-center">
+                JUJUTSU<br>ARENA
+            </h1>
+            <h2 class="text-cyan-400 text-lg mb-8 tracking-widest">ONLINE MOBILE FIGHTER</h2>
+            
+            <div class="w-full max-w-md space-y-4 mb-8">
+                <div class="bg-black/40 p-4 rounded-lg border border-purple-500/30 text-center">
+                    <p class="text-white text-sm mb-2">🎮 Online PvP Battles</p>
+                    <p class="text-gray-400 text-xs">Fight players worldwide in real-time</p>
+                </div>
+                <div class="bg-black/40 p-4 rounded-lg border border-purple-500/30 text-center">
+                    <p class="text-white text-sm mb-2">📱 Touch Controls</p>
+                    <p class="text-gray-400 text-xs">Optimized for mobile devices</p>
+                </div>
+            </div>
+            
+            <button onclick="connectToServer()" class="anime-font text-2xl px-12 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full shadow-lg border-2 border-yellow-400 active:scale-95 transition-transform w-full max-w-xs">
+                PLAY ONLINE
+            </button>
+            
+            <button onclick="showLocalMode()" class="mt-4 text-gray-400 text-sm underline">
+                Practice Mode (Offline)
+            </button>
+        </div>
+
+        <!-- MATCHMAKING SCREEN -->
+        <div id="matchmaking-screen" class="screen bg-gradient-to-b from-gray-900 to-black flex flex-col items-center justify-center p-6">
+            <div class="matchmaking-card w-full max-w-sm">
+                <div id="matchmaking-status">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <h3 class="anime-font text-2xl text-white mb-2">FINDING OPPONENT</h3>
+                    <p class="text-gray-300 text-sm">Searching for nearby players...</p>
+                    <p class="text-yellow-400 text-xs mt-2" id="queue-time">Time: 0s</p>
+                </div>
+                
+                <div id="opponent-found" class="hidden opponent-found">
+                    <div class="text-6xl mb-2">⚔️</div>
+                    <h3 class="anime-font text-2xl text-green-400 mb-2">MATCH FOUND!</h3>
+                    <p class="text-white" id="opponent-name">Opponent: ...</p>
+                    <p class="text-yellow-400 text-sm mt-2">Starting in <span id="countdown">3</span>...</p>
+                </div>
+                
+                <button onclick="cancelMatchmaking()" class="mt-6 px-6 py-2 bg-red-600 text-white rounded-full text-sm">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        <!-- CHARACTER SELECT -->
+        <div id="char-select" class="screen bg-gradient-to-b from-gray-900 via-purple-900 to-black overflow-y-auto">
+            <div class="p-4 pt-12">
+                <h2 class="anime-font text-4xl text-center text-yellow-400 mb-2">SELECT FIGHTER</h2>
+                <p class="text-center text-gray-400 text-sm mb-4">Choose your character</p>
+                
+                <div class="char-grid-mobile" id="char-grid">
+                    <!-- Generated by JS -->
+                </div>
+                
+                <div class="mt-6 text-center">
+                    <button onclick="confirmCharacter()" class="anime-font text-xl px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg shadow-lg disabled:opacity-50" id="confirm-btn" disabled>
+                        LOCK IN
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- GAME SCREEN -->
+        <div id="game-screen" class="screen bg-black">
+            <canvas id="game-canvas" class="block w-full h-full"></canvas>
+            
+            <!-- Game UI -->
+            <div id="game-ui" class="absolute inset-0 pointer-events-none hidden">
+                <!-- Health Bars -->
+                <div class="absolute top-12 left-2 right-2 flex justify-between items-start">
+                    <!-- P1 (You) -->
+                    <div class="w-5/12">
+                        <div class="flex items-center mb-1">
+                            <span class="text-red-500 font-bold text-sm anime-font">YOU</span>
+                        </div>
+                        <div class="health-bar-container h-6 rounded-lg overflow-hidden">
+                            <div id="p1-health" class="health-fill h-full w-full bg-gradient-to-r from-red-600 to-red-400"></div>
+                        </div>
+                        <div class="mt-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div id="p1-special" class="special-bar h-full w-0 transition-all duration-100"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Timer -->
+                    <div class="flex flex-col items-center px-2">
+                        <div class="text-4xl font-black text-yellow-400 anime-font" id="timer">60</div>
+                    </div>
+                    
+                    <!-- P2 (Opponent) -->
+                    <div class="w-5/12 text-right">
+                        <div class="flex items-center justify-end mb-1">
+                            <span class="text-blue-500 font-bold text-sm anime-font">OPPONENT</span>
+                        </div>
+                        <div class="health-bar-container h-6 rounded-lg overflow-hidden">
+                            <div id="p2-health" class="health-fill h-full w-full bg-gradient-to-r from-blue-600 to-blue-400" style="margin-left: auto;"></div>
+                        </div>
+                        <div class="mt-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div id="p2-special" class="special-bar h-full w-0 transition-all duration-100 ml-auto"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Combo Counters -->
+                <div id="p1-combo" class="absolute left-4 top-24 text-4xl font-black text-red-500 opacity-0 combo-text anime-font">0 HIT</div>
+                <div id="p2-combo" class="absolute right-4 top-24 text-4xl font-black text-blue-500 opacity-0 combo-text anime-font">0 HIT</div>
+                
+                <!-- Messages -->
+                <div id="game-message" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center hidden">
+                    <div class="text-5xl font-black anime-font text-yellow-400 mb-2" id="message-title">ROUND 1</div>
+                    <div class="text-white text-lg" id="message-sub">FIGHT!</div>
+                </div>
+            </div>
+            
+            <!-- Touch Controls -->
+            <div id="touch-controls" class="touch-controls hidden">
+                <!-- Joystick -->
+                <div class="joystick-zone" id="joystick">
+                    <div class="joystick-base"></div>
+                    <div class="joystick-stick" id="joystick-stick"></div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="action-btn btn-block" id="btn-block" ontouchstart="setInput('block', true)" ontouchend="setInput('block', false)">
+                        🛡️
+                    </button>
+                    <button class="action-btn btn-punch" id="btn-punch" ontouchstart="setInput('punch', true)" ontouchend="setInput('punch', false)">
+                        PUNCH
+                    </button>
+                    <button class="action-btn btn-kick" id="btn-kick" ontouchstart="setInput('kick', true)" ontouchend="setInput('kick', false)">
+                        KICK
+                    </button>
+                    <button class="action-btn btn-special" id="btn-special" ontouchstart="setInput('special', true)" ontouchend="setInput('special', false)">
+                        SPECIAL
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Game Over Screen -->
+            <div id="game-over" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center hidden z-50">
+                <div class="text-6xl font-black anime-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-red-600 mb-4" id="result-text">
+                    VICTORY!
+                </div>
+                <div class="text-white mb-8" id="result-reason">K.O.</div>
+                <div class="flex gap-4">
+                    <button onclick="rematch()" class="px-6 py-3 bg-green-600 text-white rounded-lg font-bold">
+                        REMATCH
+                    </button>
+                    <button onclick="backToMenu()" class="px-6 py-3 bg-gray-600 text-white rounded-lg font-bold">
+                        MENU
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TUTORIAL -->
+        <div id="tutorial" class="tutorial-overlay hidden">
+            <div class="tutorial-step">
+                <div class="text-6xl mb-4">👆</div>
+                <h3 class="anime-font text-3xl text-yellow-400 mb-4">HOW TO PLAY</h3>
+                <div class="space-y-4 text-left bg-black/50 p-6 rounded-lg">
+                    <p>🕹️ <b>Joystick:</b> Move left/right</p>
+                    <p>👊 <b>Red Button:</b> Punch (fast, weak)</p>
+                    <p>🦶 <b>Blue Button:</b> Kick (slow, strong)</p>
+                    <p>⚡ <b>Yellow Button:</b> Special (needs full meter)</p>
+                    <p>🛡️ <b>Shield:</b> Block (hold to reduce damage)</p>
+                </div>
+                <button onclick="closeTutorial()" class="mt-6 px-8 py-3 bg-purple-600 text-white rounded-full font-bold">
+                    GOT IT!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game Configuration
+        const CONFIG = {
+            serverUrl: window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://your-server-url.com',
+            inputDelay: 0, // For rollback netcode simulation
+            prediction: true
+        };
+
+        // Character Database
+        const characters = [
+            { id: 'gojo', name: 'GOJO', color: 0xffffff, aura: 0x00ffff, stats: {spd: 10, pow: 7} },
+            { id: 'sukuna', name: 'SUKUNA', color: 0x8b0000, aura: 0xff0000, stats: {spd: 7, pow: 10} },
+            { id: 'yuji', name: 'YUJI', color: 0xff6600, aura: 0xff6600, stats: {spd: 8, pow: 8} },
+            { id: 'megumi', name: 'MEGUMI', color: 0x1a1a2e, aura: 0x4a0080, stats: {spd: 7, pow: 7} },
+            { id: 'nobara', name: 'NOBARA', color: 0xff1493, aura: 0xff69b4, stats: {spd: 7, pow: 7} },
+            { id: 'todo', name: 'TODO', color: 0x8b4513, aura: 0x8b4513, stats: {spd: 6, pow: 9} }
+        ];
+
+        // Global State
+        let socket;
+        let gameState = {
+            mode: 'online', // 'online' or 'local'
+            screen: 'start',
+            player: null,
+            opponent: null,
+            selectedChar: null,
+            gameId: null,
+            isHost: false,
+            inputs: { x: 0, y: 0, punch: false, kick: false, block: false, special: false }
+        };
+
+        let scene, camera, renderer, clock;
+        let playerFighter, opponentFighter;
+        let lastPing = 0;
+        let inputSequence = 0;
+        let pendingInputs = [];
+
+        // Touch Input Handling
+        let joystickActive = false;
+        let joystickCenter = { x: 0, y: 0 };
+        let joystickCurrent = { x: 0, y: 0 };
+
+        // Initialize Joystick
+        function initJoystick() {
+            const joystick = document.getElementById('joystick');
+            const stick = document.getElementById('joystick-stick');
+            
+            const handleStart = (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = joystick.getBoundingClientRect();
+                joystickCenter = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+                joystickActive = true;
+                updateJoystick(touch);
+            };
+            
+            const handleMove = (e) => {
+                e.preventDefault();
+                if (!joystickActive) return;
+                updateJoystick(e.touches[0]);
+            };
+            
+            const handleEnd = (e) => {
+                e.preventDefault();
+                joystickActive = false;
+                stick.style.transform = 'translate(0px, 0px)';
+                gameState.inputs.x = 0;
+                gameState.inputs.y = 0;
+            };
+            
+            joystick.addEventListener('touchstart', handleStart, {passive: false});
+            joystick.addEventListener('touchmove', handleMove, {passive: false});
+            joystick.addEventListener('touchend', handleEnd, {passive: false});
+        }
+
+        function updateJoystick(touch) {
+            const stick = document.getElementById('joystick-stick');
+            const maxDist = 35;
+            
+            let dx = touch.clientX - joystickCenter.x;
+            let dy = touch.clientY - joystickCenter.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist > maxDist) {
+                dx = (dx / dist) * maxDist;
+                dy = (dy / dist) * maxDist;
+            }
+            
+            stick.style.transform = `translate(${dx}px, ${dy}px)`;
+            
+            // Normalize input -1 to 1
+            gameState.inputs.x = dx / maxDist;
+            gameState.inputs.y = dy / maxDist;
+        }
+
+        function setInput(action, value) {
+            gameState.inputs[action] = value;
+            
+            // Haptic feedback
+            if (value && navigator.vibrate) {
+                navigator.vibrate(10);
+            }
+        }
+
+        // Networking
+        function connectToServer() {
+            updateConnectionStatus('connecting', 'CONNECTING...');
+            
+            socket = io(CONFIG.serverUrl, {
+                transports: ['websocket', 'polling'],
+                timeout: 10000
+            });
+            
+            socket.on('connect', () => {
+                updateConnectionStatus('online', 'ONLINE');
+                startMatchmaking();
+            });
+            
+            socket.on('connect_error', (err) => {
+                console.error('Connection failed:', err);
+                updateConnectionStatus('offline', 'OFFLINE');
+                alert('Failed to connect to server. Try Practice Mode instead.');
+            });
+            
+            socket.on('match-found', (data) => {
+                gameState.gameId = data.gameId;
+                gameState.isHost = data.isHost;
+                gameState.opponent = data.opponent;
+                showOpponentFound(data.opponent);
+            });
+            
+            socket.on('game-start', (data) => {
+                startGame(data);
+            });
+            
+            socket.on('game-state', (data) => {
+                receiveGameState(data);
+            });
+            
+            socket.on('opponent-input', (data) => {
+                applyOpponentInput(data);
+            });
+            
+            socket.on('opponent-disconnected', () => {
+                alert('Opponent disconnected!');
+                backToMenu();
+            });
+            
+            socket.on('pong', (data) => {
+                lastPing = Date.now() - data.time;
+                document.getElementById('ping-display').textContent = `Ping: ${lastPing}ms`;
+            });
+            
+            // Ping checker
+            setInterval(() => {
+                if (socket && socket.connected) {
+                    socket.emit('ping', { time: Date.now() });
+                }
+            }, 2000);
+        }
+
+        function updateConnectionStatus(status, text) {
+            const el = document.getElementById('connection-status');
+            el.className = `connection-status status-${status}`;
+            el.textContent = text;
+        }
+
+        function startMatchmaking() {
+            showScreen('matchmaking-screen');
+            socket.emit('find-match');
+            
+            let queueTime = 0;
+            const timer = setInterval(() => {
+                if (gameState.screen !== 'matchmaking-screen') {
+                    clearInterval(timer);
+                    return;
+                }
+                queueTime++;
+                document.getElementById('queue-time').textContent = `Time: ${queueTime}s`;
+            }, 1000);
+        }
+
+        function cancelMatchmaking() {
+            socket.emit('cancel-match');
+            showScreen('start-screen');
+        }
+
+        function showOpponentFound(opponent) {
+            document.getElementById('matchmaking-status').classList.add('hidden');
+            document.getElementById('opponent-found').classList.remove('hidden');
+            document.getElementById('opponent-name').textContent = `Opponent: ${opponent.name || 'Unknown'}`;
+            
+            let count = 3;
+            const countdown = setInterval(() => {
+                count--;
+                document.getElementById('countdown').textContent = count;
+                if (count <= 0) clearInterval(countdown);
+            }, 1000);
+        }
+
+        // Character Selection
+        function initCharSelect() {
+            const grid = document.getElementById('char-grid');
+            grid.innerHTML = '';
+            
+            characters.forEach((char, idx) => {
+                const card = document.createElement('div');
+                card.className = 'char-card-mobile';
+                card.dataset.index = idx;
+                card.innerHTML = `
+                    <div class="char-avatar" style="background: linear-gradient(135deg, #${char.aura.toString(16)}, #${char.color.toString(16)}); color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                        ${char.name[0]}
+                    </div>
+                    <div class="text-white text-xs font-bold">${char.name}</div>
+                    <div class="text-gray-400 text-xs">⚡${char.stats.spd} 👊${char.stats.pow}</div>
+                `;
+                card.onclick = () => selectCharacter(idx);
+                grid.appendChild(card);
+            });
+        }
+
+        function selectCharacter(idx) {
+            gameState.selectedChar = characters[idx];
+            document.querySelectorAll('.char-card-mobile').forEach((c, i) => {
+                c.classList.toggle('selected', i === idx);
+            });
+            document.getElementById('confirm-btn').disabled = false;
+        }
+
+        function confirmCharacter() {
+            if (gameState.mode === 'online') {
+                socket.emit('character-selected', {
+                    gameId: gameState.gameId,
+                    character: gameState.selectedChar
+                });
+            }
+            initGame();
+        }
+
+        // Three.js Game
+        function initGame(data) {
+            showScreen('game-screen');
+            document.getElementById('touch-controls').classList.remove('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
+            document.getElementById('ping-display').style.display = 'block';
+            
+            initJoystick();
+            
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 10, 50);
+            
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3, 8);
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('game-canvas'),
+                antialias: true,
+                powerPreference: "high-performance"
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            
+            // Lighting
+            const ambient = new THREE.AmbientLight(0x404060, 0.5);
+            scene.add(ambient);
+            
+            const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+            dir.position.set(5, 10, 5);
+            dir.castShadow = true;
+            scene.add(dir);
+            
+            // Stage
+            const stage = new THREE.Mesh(
+                new THREE.CylinderGeometry(12, 12, 0.5, 64),
+                new THREE.MeshPhongMaterial({ color: 0x3d2817 })
+            );
+            stage.position.y = -0.25;
+            scene.add(stage);
+            
+            // Create fighters
+            const char1 = gameState.selectedChar || characters[0];
+            const char2 = data?.opponentChar || characters[1];
+            
+            playerFighter = createFighter(char1, -3, true);
+            opponentFighter = createFighter(char2, 3, false);
+            
+            scene.add(playerFighter.mesh);
+            scene.add(opponentFighter.mesh);
+            
+            // Start loop
+            clock = new THREE.Clock();
+            gameState.screen = 'game';
+            
+            // Show round start
+            showMessage('ROUND 1', 'FIGHT!', 2000);
+            
+            requestAnimationFrame(gameLoop);
+            
+            // Send inputs to server
+            if (gameState.mode === 'online') {
+                setInterval(() => {
+                    if (gameState.screen === 'game') {
+                        sendInput();
+                    }
+                }, 1000 / 30); // 30Hz input rate
+            }
+        }
+
+        function createFighter(charData, x, isPlayer) {
+            const group = new THREE.Group();
+            
+            // Body
+            const bodyMat = new THREE.MeshPhongMaterial({ color: charData.color });
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.4), bodyMat);
+            torso.position.y = 1.4;
+            group.add(torso);
+            
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.4, 0.35), bodyMat);
+            head.position.y = 0.65;
+            torso.add(head);
+            
+            // Aura
+            const auraGeo = new THREE.SphereGeometry(1.2, 32, 32);
+            const auraMat = new THREE.MeshBasicMaterial({
+                color: charData.aura,
+                transparent: true,
+                opacity: 0.1,
+                wireframe: true
+            });
+            const aura = new THREE.Mesh(auraGeo, auraMat);
+            aura.position.y = 1;
+            group.add(aura);
+            
+            // Shadow
+            const shadow = new THREE.Mesh(
+                new THREE.CircleGeometry(0.5, 32),
+                new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
+            );
+            shadow.rotation.x = -Math.PI/2;
+            shadow.position.y = 0.01;
+            group.add(shadow);
+            
+            group.position.x = x;
+            
+            return {
+                mesh: group,
+                data: charData,
+                health: 100,
+                special: 0,
+                velocity: new THREE.Vector3(),
+                isPlayer: isPlayer,
+                state: 'idle'
+            };
+        }
+
+        function gameLoop() {
+            if (gameState.screen !== 'game') return;
+            
+            const delta = Math.min(clock.getDelta(), 0.1);
+            
+            // Update player
+            updateFighter(playerFighter, gameState.inputs, delta);
+            
+            // In local mode, update AI or second player
+            if (gameState.mode === 'local') {
+                updateLocalOpponent(delta);
+            }
+            
+            // Camera follow
+            const midX = (playerFighter.mesh.position.x + opponentFighter.mesh.position.x) / 2;
+            camera.position.x += (midX * 0.3 - camera.position.x) * 0.05;
+            camera.lookAt(midX * 0.2, 1, 0);
+            
+            renderer.render(scene, camera);
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateFighter(fighter, input, delta) {
+            // Movement
+            const speed = 5 * (fighter.data.stats.spd / 10);
+            fighter.velocity.x = input.x * speed;
+            
+            // Jump
+            if (input.y < -0.5 && fighter.mesh.position.y <= 0.1) {
+                fighter.velocity.y = 6;
+            }
+            
+            // Gravity
+            fighter.velocity.y -= 20 * delta;
+            fighter.mesh.position.x += fighter.velocity.x * delta;
+            fighter.mesh.position.y += fighter.velocity.y * delta;
+            
+            if (fighter.mesh.position.y < 0) {
+                fighter.mesh.position.y = 0;
+                fighter.velocity.y = 0;
+            }
+            
+            // Bounds
+            fighter.mesh.position.x = Math.max(-10, Math.min(10, fighter.mesh.position.x));
+            
+            // Face opponent
+            const target = fighter.isPlayer ? opponentFighter : playerFighter;
+            if (target) {
+                fighter.mesh.rotation.y = target.mesh.position.x > fighter.mesh.position.x ? 0 : Math.PI;
+            }
+            
+            // Animate aura
+            fighter.mesh.children[2].rotation.y += delta;
+            
+            // Build special
+            if (fighter.special < 100) fighter.special += delta * 5;
+        }
+
+        function updateLocalOpponent(delta) {
+            // Simple AI for practice mode
+            const dist = opponentFighter.mesh.position.x - playerFighter.mesh.position.x;
+            const aiInput = { x: 0, y: 0, punch: false, kick: false, block: false, special: false };
+            
+            if (Math.abs(dist) > 2) {
+                aiInput.x = dist > 0 ? -0.5 : 0.5;
+            } else if (Math.random() < 0.02) {
+                aiInput.punch = true;
+                setTimeout(() => aiInput.punch = false, 100);
+            }
+            
+            updateFighter(opponentFighter, aiInput, delta);
+        }
+
+        function sendInput() {
+            inputSequence++;
+            const data = {
+                gameId: gameState.gameId,
+                sequence: inputSequence,
+                inputs: {...gameState.inputs},
+                position: {
+                    x: playerFighter.mesh.position.x,
+                    y: playerFighter.mesh.position.y
+                },
+                timestamp: Date.now()
+            };
+            socket.emit('player-input', data);
+            pendingInputs.push(data);
+        }
+
+        function receiveGameState(data) {
+            // Server reconciliation
+            opponentFighter.mesh.position.x = data.opponentPosition.x;
+            opponentFighter.mesh.position.y = data.opponentPosition.y;
+            opponentFighter.health = data.opponentHealth;
+            
+            // Update health bars
+            document.getElementById('p2-health').style.width = opponentFighter.health + '%';
+        }
+
+        function applyOpponentInput(data) {
+            // Apply opponent input directly for responsiveness
+            updateFighter(opponentFighter, data.inputs, 0.033);
+        }
+
+        // UI Functions
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            gameState.screen = screenId;
+        }
+
+        function showMessage(title, sub, duration) {
+            const msg = document.getElementById('game-message');
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-sub').textContent = sub;
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), duration);
+        }
+
+        function showLocalMode() {
+            gameState.mode = 'local';
+            initCharSelect();
+            showScreen('char-select');
+        }
+
+        function rematch() {
+            document.getElementById('game-over').classList.add('hidden');
+            if (gameState.mode === 'online') {
+                socket.emit('rematch-request', { gameId: gameState.gameId });
+            } else {
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            playerFighter.health = 100;
+            opponentFighter.health = 100;
+            playerFighter.mesh.position.set(-3, 0, 0);
+            opponentFighter.mesh.position.set(3, 0, 0);
+            document.getElementById('p1-health').style.width = '100%';
+            document.getElementById('p2-health').style.width = '100%';
+            showMessage('ROUND 1', 'FIGHT!', 2000);
+        }
+
+        function backToMenu() {
+            if (socket) socket.disconnect();
+            showScreen('start-screen');
+            document.getElementById('touch-controls').classList.add('hidden');
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('ping-display').style.display = 'none';
+        }
+
+        function closeTutorial() {
+            document.getElementById('tutorial').classList.add('hidden');
+            localStorage.setItem('tutorialSeen', 'true');
+        }
+
+        // Init
+        window.onload = () => {
+            showScreen('start-screen');
+            if (!localStorage.getItem('tutorialSeen')) {
+                document.getElementById('tutorial').classList.remove('hidden');
+            }
+        };
+
+        // Prevent zoom/scroll
+        document.addEventListener('gesturestart', (e) => e.preventDefault());
+        document.addEventListener('gesturechange', (e) => e.preventDefault());
+        document.addEventListener('gestureend', (e) => e.preventDefault());
+    </script>
+</body>
+</html>
